@@ -1,0 +1,129 @@
+services:
+  redis:
+    image: redis/redis-stack:latest
+    container_name: cement-boilerplate-redis
+    ports:
+      - 6379:6379 # Redis Storage
+      - 8001:8001 # Web UI
+    environment:
+      REDIS_ARGS: "--requirepass 1234"
+    restart: unless-stopped
+    networks:
+      - cement-boilerplate-network
+
+  rabbitmq:
+    container_name: cement-boilerplate-rabbitmq
+    image: rabbitmq:3-management
+    ports:
+      - 5672:5672 # AMQP
+      - 15672:15672 # Management UI
+    volumes:
+      - ./backend/infrastructure/messaging/definitions.json:/etc/rabbitmq/definitions.json
+    environment:
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbitmq_management load_definitions "/etc/rabbitmq/definitions.json"
+    networks:
+      - cement-boilerplate-network
+
+  postgres:
+    image: postgres:15
+    container_name: cement-boilerplate-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - 5678:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - cement-boilerplate-network
+
+  cache_setter:
+    build:
+      context: ./backend
+      dockerfile: ./worker/cache_setter/Dockerfile
+    environment:
+      - RABBITMQ_HOST=cement-boilerplate-rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+      - REDIS_HOST=cement-boilerplate-redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=1234
+    networks:
+      - cement-boilerplate-network
+
+  db_saver:
+    build:
+      context: ./backend
+      dockerfile: ./worker/db_saver/Dockerfile
+    environment:
+      - RABBITMQ_HOST=cement-boilerplate-rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+      - DB_HOST=cement-boilerplate-postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=postgres
+    networks:
+      - cement-boilerplate-network
+
+  sample_data_generator:
+    build:
+      context: ./backend
+      dockerfile: ./worker/sample_data_generator/Dockerfile
+    environment:
+      - RABBITMQ_HOST=cement-boilerplate-rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+    networks:
+      - cement-boilerplate-network
+
+  ai_inference:
+    build:
+      context: ./backend
+      dockerfile: ./worker/ai_inference/Dockerfile
+    environment:
+      - RABBITMQ_HOST=cement-boilerplate-rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+      - REDIS_HOST=cement-boilerplate-redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=1234
+    networks:
+      - cement-boilerplate-network
+
+  application:
+    build:
+      context: ./backend
+      dockerfile: ./application/Dockerfile
+    environment:
+      - RABBITMQ_HOST=cement-boilerplate-rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+      - DB_HOST=cement-boilerplate-postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=postgres
+      - REDIS_HOST=cement-boilerplate-redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=1234
+    ports:
+      - 8000:8000
+    networks:
+      - cement-boilerplate-network
+
+volumes:
+  postgres_data:
+
+networks:
+  cement-boilerplate-network:
+    name: cement-boilerplate-network
+    driver: bridge
